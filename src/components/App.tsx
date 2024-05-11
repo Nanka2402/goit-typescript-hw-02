@@ -1,76 +1,83 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SearchBar from "./SearchBar/SearchBar";
 import { fetchPhoto } from "../Servises/api";
 import ImageGallery from "./ImageGallery/ImageGallery";
-import Loader from "./Loader/Loader";
 import ErrorMessage from "./ErrorMessage/ErrorMessage";
+import Loader from "./Loader/Loader";
 import LoadMoreBtn from "./LoadMoreBtn/LoadMoreBtn";
+import { useToggle } from "./hooks/useToggle";
 import ImageModal from "./ImageModal/ImageModal";
+import toast from "react-hot-toast";
+import { Image } from "./ImageGallery/ImageCard/ImageCard";
 
 function App() {
-  const [loading, setLoading] = useState(false);
-  const [images, setImages] = useState([]);
-  const [error, setError] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [images, setImages] = useState<Image[]>([]);
+  const [error, setError] = useState<boolean | string>(false);
+  const [searchPhoto, setSearchPhoto] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [loadMoreBtn, setLoadMoreBtn] = useState<boolean>(false);
+  const [info, setInfo] = useState<Image | null>(null);
+
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
   const per_page = 12;
 
-  const handleSearch = async (searchPhoto) => {
-    try {
-      setImages([]);
-      setError(null);
-      setLoading(true);
-      const data = await fetchPhoto(1, per_page, searchPhoto);
-      setImages(data.results);
-      setSearchTerm(searchPhoto);
+  useEffect(() => {
+    async function FetchData() {
+      try {
+        setError(false);
+        setLoading(true);
+        setLoadMoreBtn(false);
+        const res = await fetchPhoto(currentPage, per_page, searchPhoto);
+        if (res.total === 0) {
+          setImages([]);
+          setError(true);
+        } else {
+          setImages((prevImages) => [...prevImages, ...res.results]);
+          if (currentPage < res.total_pages) {
+            setLoadMoreBtn(true);
+          } else {
+            setLoadMoreBtn(false);
+          }
+        }
+      } catch (err) {
+        setError("error message");
+        toast.error("Error fetching data!");
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (searchPhoto !== "") FetchData();
+  }, [currentPage, searchPhoto]);
+
+  const hundleSeach = (photo: string) => {
+    if (photo !== "" && photo !== searchPhoto) {
+      setSearchPhoto(photo);
       setCurrentPage(1);
-    } catch (error) {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
+      setImages([]);
     }
   };
-  const handleLoadMore = async () => {
-    try {
-      setLoading(true);
-      // eslint-disable-next-line no-undef
-      const data = await fetchPhoto(currentPage + 1, per_page, searchTerm);
-      setImages((prevImages) => [...prevImages, ...data.results]);
-      setCurrentPage((prevPage) => prevPage + 1);
-    } catch (error) {
-      setError("Failed to load more images. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  const hundlePagination = () => {
+    setCurrentPage((prevPage) => prevPage + 1);
   };
-  const openModal = (image) => {
-    setSelectedImage(image);
-  };
-  const closeModal = () => {
-    setSelectedImage(null);
+  const { isOpen, open, close } = useToggle();
+  const handleToggle = (image: Image) => {
+    setInfo(image);
+    open();
   };
   return (
     <>
-      <SearchBar onSearch={handleSearch} />
-      {loading && <Loader />}
+      <SearchBar onSeach={hundleSeach} />
       {error && <ErrorMessage message={error} />}
+      {loading && <Loader />}
       {images.length > 0 && (
-        <ImageGallery images={images} openModal={openModal} />
+        <ImageGallery images={images} onToggle={handleToggle} />
       )}
-      {images.length > 0 && !loading && (
-        <LoadMoreBtn onLoadMore={handleLoadMore} />
-      )}
-      {selectedImage && (
-        <ImageModal
-          modalIsOpen={true}
-          closeModal={closeModal}
-          modal={selectedImage.urls.regular}
-          description={selectedImage.description}
-          likes={selectedImage.likes}
-        />
+      {loadMoreBtn && <LoadMoreBtn onLoadMore={hundlePagination} />}
+      {info && (
+        <ImageModal modalState={isOpen} modalOnClose={close} image={info} />
       )}
     </>
   );
 }
+
 export default App;
